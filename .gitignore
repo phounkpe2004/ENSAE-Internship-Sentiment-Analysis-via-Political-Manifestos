@@ -23,6 +23,3 @@ Thumbs.db
 
 # Large/raw datasets
 un_voting_analysis/data/raw/
-
-# Generated/processed results
-un_voting_analysis/data/processed/
