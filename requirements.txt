@@ -1,0 +1,32 @@
+# Data manipulation
+
+pandas
+numpy
+
+# Visualization
+
+matplotlib
+seaborn
+
+# Natural language processing
+
+spacy
+vaderSentiment
+tomotopy
+scikit-learn 
+
+# Utilities
+
+requests
+parse
+
+# Jupyter
+
+jupyter
+ipykernel
+
+# Bayesian modelling
+pymc
+pytensor
+arviz
+
