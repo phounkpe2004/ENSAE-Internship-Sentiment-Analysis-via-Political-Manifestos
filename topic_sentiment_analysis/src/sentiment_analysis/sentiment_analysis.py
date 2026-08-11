@@ -235,3 +235,33 @@ def get_country_mentions(sentiment_dataset, country="AUSTRALIA"):
         scores = pd.Series(dtype=float)
 
     return scores.to_dict()
+
+
+######################## INITIAL VERSION ############################
+
+# def get_country_sentiment(sentiment_dataset, country="AUSTRALIA"):
+#     expanded = pd.DataFrame(
+#         sentiment_dataset["sentiment_by_countries"].tolist(), 
+#         index=sentiment_dataset["year"]
+#     )
+    
+#     if country in expanded.columns:
+#         # 2. Extract country column & aggregate duplicate years (e.g., take mean per year)
+#         # Leaving missing years as NaN so forward filling actually works
+#         scores = expanded[country].groupby(level=0).mean()
+#     else:
+#         # If the country isn't present in any dictionary
+#         scores = pd.Series(dtype=float)
+
+#     # 3. Create a continuous range of years
+#     if not scores.empty:
+#         min_year, max_year = scores.index.min(), scores.index.max()
+#         full_years = range(min_year, max_year + 1)
+        
+#         # 4. Reindex to include missing intermediate years, forward fill, then fill remaining leading NaNs with 0
+#         ffilled_scores = scores.reindex(full_years).ffill().fillna(0)
+#     else:
+#         # Fallback if country was never seen anywhere
+#         ffilled_scores = pd.Series(0.0, index=range(sentiment_dataset["year"].min(), sentiment_dataset["year"].max() + 1))
+
+#     return ffilled_scores.to_dict()
