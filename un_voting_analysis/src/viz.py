@@ -76,11 +76,11 @@ def plot_distance_sentiment(data, target_country = "AUS"):
     line1 = ax1.plot(subset['year'], subset['distance_to_usa'], color=color1, marker='o', label='Distance')
     ax1.tick_params(axis='y', labelcolor=color1)
 
-    # Secondary Y-Axis: Sentiment
+    # Secondary Y-Axis: Country Sentiment towards USA
     ax2 = ax1.twinx()  
     color2 = 'tab:red'
     ax2.set_ylabel('Sentiment envers les USA', color=color2)
-    line2 = ax2.plot(subset['year'], subset['sentiment_towards_USA'], color=color2, marker='s', linestyle='--', label='Sentiment')
+    line2 = ax2.plot(subset['year'], subset['country_sentiment_towards_usa'], color=color2, marker='s', linestyle='--', label='Sentiment')
     ax2.tick_params(axis='y', labelcolor=color2)
 
     # Combine legends from both axes

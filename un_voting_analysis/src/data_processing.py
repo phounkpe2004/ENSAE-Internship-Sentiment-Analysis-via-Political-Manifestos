@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from config import MCMCConfig
+from src.config import MCMCConfig
 
 # Codes de vote bruts -> à filtrer avant modélisation
 VALID_VOTE_CODES = {1, 2, 3}  # Yes, Abstain, No -- on exclut 8 (absent) et 9 (non-membre)

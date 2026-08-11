@@ -71,14 +71,13 @@ def setup_sentiment_analyzer(nlp, country_synonyms_dict):
 
 def analyze_targeted_sentiment(text_segment, nlp, analyzer, country_synonyms_dict):
     """
-    Analyse le sentiment VADER phrase par phrase uniquement lorsqu'un 
-    pays du dictionnaire est détecté.
+    Analyzes VADER sentiment sentence-by-sentence on a pre-parsed spaCy Doc.
     """
     doc = nlp(text_segment)
     sentiment_accumulator = {}
     
     for sentence in doc.sents:
-        # Détection des pays présents dans cette phrase
+        # Detect countries present in this sentence
         detected_countries = {
             ent.label_ for ent in sentence.ents 
             if ent.label_ in country_synonyms_dict
@@ -88,35 +87,48 @@ def analyze_targeted_sentiment(text_segment, nlp, analyzer, country_synonyms_dic
             vader_score = analyzer.polarity_scores(sentence.text)['compound']
             
             for country in detected_countries:
-                if country not in sentiment_accumulator:
-                    sentiment_accumulator[country] = []
-                sentiment_accumulator[country].append(vader_score)
+                sentiment_accumulator.setdefault(country, []).append(vader_score)
                 
-    # Calcul de la moyenne des sentiments par pays pour ce segment
+    # Calculate average sentiment scores and mention counts
     final_scores = {}
+    number_mentions = {}
+
     for country, scores in sentiment_accumulator.items():
         final_scores[country] = sum(scores) / len(scores)
+        number_mentions[country] = len(scores)
         
-    return dict(sorted(final_scores.items(), key=lambda x: x[0]))
+    sorted_scores = dict(sorted(final_scores.items(), key=lambda x: x[0]))
+    sorted_mentions = dict(sorted(number_mentions.items(), key=lambda x: x[0]))
+
+    return sorted_scores, sorted_mentions
 
 
-def compute_country_scores(section_dataframe, nlp, analyzer, country_synonyms_dict):
+def compute_country_scores(section_dataframe, nlp, analyzer, country_synonyms_dict, batch_size=50):
     """
-    Applique l'analyse de sentiment ciblé sur la colonne 'text' du DataFrame 
-    et stocke les résultats dans une nouvelle colonne.
+    Applies targeted sentiment analysis using SpaCy's high-performance nlp.pipe batching.
     """
-    # Copie locale pour éviter les avertissements de type "SettingWithCopyWarning"
     df = section_dataframe.copy()
     
-    # Utilisation de arguments supplémentaires dans .apply() via lambda
-    df["sentiment_by_countries"] = df["text"].apply(
-        lambda text: analyze_targeted_sentiment(
-            text_segment=text, 
-            nlp=nlp, 
+    texts = df["text"].fillna("").astype(str).tolist()
+    docs = nlp.pipe(texts, batch_size=batch_size)
+    
+    # Extract results in a single pass
+    sentiments = []
+    mentions = []
+    
+    for doc in docs:
+        score_dict, mention_dict = analyze_targeted_sentiment(
+            text_segment=doc,
+            nlp=nlp,
             analyzer=analyzer, 
             country_synonyms_dict=country_synonyms_dict
         )
-    )
+        sentiments.append(score_dict)
+        mentions.append(mention_dict)
+        
+    # Assign directly to the DataFrame
+    df["sentiment_by_countries"] = sentiments
+    df["number_mentions"] = mentions
 
     return df
 
@@ -137,7 +149,7 @@ def plot_country_sentiment(dataframe, party, year, figsize=(10, 12)):
 
 
     plot_df = pd.DataFrame(list(country_sentiment.items()), columns=["Country", "Sentiment"])
-    plot_df = plot_df[plot_df['Sentiment'] != 0.0]
+    #plot_df = plot_df[plot_df['Sentiment'] != 0.0]
     
     if plot_df.empty:
         print(f"[Warning] All sentiment scores were 0.0 for {party} in {year}. Nothing to plot.")
@@ -206,15 +218,20 @@ def get_country_sentiment(sentiment_dataset, country="AUSTRALIA"):
         # If the country isn't present in any dictionary
         scores = pd.Series(dtype=float)
 
-    # 3. Create a continuous range of years
-    if not scores.empty:
-        min_year, max_year = scores.index.min(), scores.index.max()
-        full_years = range(min_year, max_year + 1)
-        
-        # 4. Reindex to include missing intermediate years, forward fill, then fill remaining leading NaNs with 0
-        ffilled_scores = scores.reindex(full_years).ffill().fillna(0)
-    else:
-        # Fallback if country was never seen anywhere
-        ffilled_scores = pd.Series(0.0, index=range(sentiment_dataset["year"].min(), sentiment_dataset["year"].max() + 1))
+    return scores.to_dict()
 
-    return ffilled_scores.to_dict()
+def get_country_mentions(sentiment_dataset, country="AUSTRALIA"):
+    expanded = pd.DataFrame(
+        sentiment_dataset["number_mentions"].tolist(), 
+        index=sentiment_dataset["year"]
+    )
+    
+    if country in expanded.columns:
+        # 2. Extract country column & aggregate duplicate years (e.g., take mean per year)
+        # Leaving missing years as NaN so forward filling actually works
+        scores = expanded[country].groupby(level=0).sum()
+    else:
+        # If the country isn't present in any dictionary
+        scores = pd.Series(dtype=float)
+
+    return scores.to_dict()
