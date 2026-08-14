@@ -30,3 +30,11 @@ pymc
 pytensor
 arviz
 
+# Regressions and Causality tests
+
+statsmodels
+
+# Web App
+
+streamlit
+

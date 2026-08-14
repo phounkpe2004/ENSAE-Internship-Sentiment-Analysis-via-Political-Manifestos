@@ -53,20 +53,28 @@ def setup_sentiment_analyzer(nlp, country_synonyms_dict):
         nlp : Le pipeline SpaCy configuré.
         analyzer : L'instance de SentimentIntensityAnalyzer.
     """
-    
+
     analyzer = SentimentIntensityAnalyzer()
 
-    # Ajout du composant EntityRuler avant le NER standard
-    ruler = nlp.add_pipe("entity_ruler", before="ner")
-
-    # Génération et ajout des patterns dynamiques
     patterns = []
     for country_label, alias_list in country_synonyms_dict.items():
         for alias in alias_list:
             patterns.append({"label": country_label, "pattern": alias})
-            
+
+    # Only create the EntityRuler when there are real patterns to add.
+    # If the dictionary is empty, we must not register an empty entity_ruler because
+    # spaCy emits W036: "The component 'entity_ruler' does not have any patterns defined."
+    if not patterns:
+        return analyzer
+
+    # Avoid re-adding the entity_ruler when the button is clicked multiple times.
+    if "entity_ruler" not in nlp.pipe_names:
+        ruler = nlp.add_pipe("entity_ruler", before="ner")
+    else:
+        ruler = nlp.get_pipe("entity_ruler")
+
     ruler.add_patterns(patterns)
-    
+
     return analyzer
 
 def analyze_targeted_sentiment(text_segment, nlp, analyzer, country_synonyms_dict):
@@ -133,19 +141,19 @@ def compute_country_scores(section_dataframe, nlp, analyzer, country_synonyms_di
     return df
 
 
-def plot_country_sentiment(dataframe, party, year, figsize=(10, 12)):
+def plot_country_sentiment(dataframe, party, year, figsize=(10, 12), show=True):
 
     filtered_row = dataframe[(dataframe["party"] == party) & (dataframe["year"] == year)]
     
     if filtered_row.empty:
         print(f"[Warning] No data found for Party: '{party}' and Year: {year}")
-        return
+        return None
 
     country_sentiment = filtered_row.iloc[0]["sentiment_by_countries"]
 
     if not isinstance(country_sentiment, dict) or not country_sentiment:
         print(f"[Warning] No country sentiment data available for {party} in {year}.")
-        return
+        return None
 
 
     plot_df = pd.DataFrame(list(country_sentiment.items()), columns=["Country", "Sentiment"])
@@ -153,7 +161,7 @@ def plot_country_sentiment(dataframe, party, year, figsize=(10, 12)):
     
     if plot_df.empty:
         print(f"[Warning] All sentiment scores were 0.0 for {party} in {year}. Nothing to plot.")
-        return
+        return None
 
     plot_df = plot_df.sort_values(by="Sentiment", ascending=True)
     plot_df["Country_Clean"] = plot_df["Country"].str.replace("_", " ").str.title()
@@ -201,8 +209,10 @@ def plot_country_sentiment(dataframe, party, year, figsize=(10, 12)):
     sns.despine(left=True, bottom=False)
 
     plt.tight_layout()
-    
-    plt.show()
+
+    if show:
+        plt.show()
+    return fig
 
 def get_country_sentiment(sentiment_dataset, country="AUSTRALIA"):
     expanded = pd.DataFrame(
@@ -220,6 +230,34 @@ def get_country_sentiment(sentiment_dataset, country="AUSTRALIA"):
 
     return scores.to_dict()
 
+
+def get_country_sentiment_imputed(sentiment_dataset, country="AUSTRALIA"):
+    expanded = pd.DataFrame(
+        sentiment_dataset["sentiment_by_countries"].tolist(), 
+        index=sentiment_dataset["year"]
+    )
+    
+    if country in expanded.columns:
+        # 2. Extract country column & aggregate duplicate years (e.g., take mean per year)
+        # Leaving missing years as NaN so forward filling actually works
+        scores = expanded[country].groupby(level=0).mean()
+    else:
+        # If the country isn't present in any dictionary
+        scores = pd.Series(dtype=float)
+
+    # 3. Create a continuous range of years
+    if not scores.empty:
+        min_year, max_year = scores.index.min(), scores.index.max()
+        full_years = range(min_year, max_year + 1)
+        
+        # 4. Reindex to include missing intermediate years, forward fill, then fill remaining leading NaNs with 0
+        ffilled_scores = scores.reindex(full_years).ffill().fillna(0)
+    else:
+        # Fallback if country was never seen anywhere
+        ffilled_scores = pd.Series(0.0, index=range(sentiment_dataset["year"].min(), sentiment_dataset["year"].max() + 1))
+
+    return ffilled_scores.to_dict()
+
 def get_country_mentions(sentiment_dataset, country="AUSTRALIA"):
     expanded = pd.DataFrame(
         sentiment_dataset["number_mentions"].tolist(), 
@@ -235,33 +273,3 @@ def get_country_mentions(sentiment_dataset, country="AUSTRALIA"):
         scores = pd.Series(dtype=float)
 
     return scores.to_dict()
-
-
-######################## INITIAL VERSION ############################
-
-# def get_country_sentiment(sentiment_dataset, country="AUSTRALIA"):
-#     expanded = pd.DataFrame(
-#         sentiment_dataset["sentiment_by_countries"].tolist(), 
-#         index=sentiment_dataset["year"]
-#     )
-    
-#     if country in expanded.columns:
-#         # 2. Extract country column & aggregate duplicate years (e.g., take mean per year)
-#         # Leaving missing years as NaN so forward filling actually works
-#         scores = expanded[country].groupby(level=0).mean()
-#     else:
-#         # If the country isn't present in any dictionary
-#         scores = pd.Series(dtype=float)
-
-#     # 3. Create a continuous range of years
-#     if not scores.empty:
-#         min_year, max_year = scores.index.min(), scores.index.max()
-#         full_years = range(min_year, max_year + 1)
-        
-#         # 4. Reindex to include missing intermediate years, forward fill, then fill remaining leading NaNs with 0
-#         ffilled_scores = scores.reindex(full_years).ffill().fillna(0)
-#     else:
-#         # Fallback if country was never seen anywhere
-#         ffilled_scores = pd.Series(0.0, index=range(sentiment_dataset["year"].min(), sentiment_dataset["year"].max() + 1))
-
-#     return ffilled_scores.to_dict()

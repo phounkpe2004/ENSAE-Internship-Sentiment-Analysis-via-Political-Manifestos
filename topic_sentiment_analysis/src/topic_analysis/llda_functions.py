@@ -511,6 +511,45 @@ def extract_topic_sentences_by_party(manifestos_dataframe, nlp, categories, seed
     return final_dataframe
 
 
+def build_sentiment_input_from_dimension(dimension_text_dataframe):
+    """Return the DataFrame in the exact format expected by the sentiment analysis pipeline.
+
+    The sentiment step should consume the extracted text for a chosen dimension, not the
+    raw manifesto text. The input may already contain a 'text' column from the LLDA
+    extraction step or need to be renamed from 'raw_text'.
+    """
+    if dimension_text_dataframe is None or dimension_text_dataframe.empty:
+        raise ValueError("No extracted dimension text available for sentiment analysis.")
+
+    df = dimension_text_dataframe.copy()
+
+    if "text" not in df.columns:
+        if "raw_text" in df.columns:
+            df = df.rename(columns={"raw_text": "text"})
+        else:
+            raise ValueError("Extracted dimension data must contain a 'text' column.")
+
+    required = {"party", "year", "text"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required fields for sentiment analysis: {sorted(missing)}")
+
+    sentiment_df = (
+        df[["party", "year", "text"]]
+        .dropna(subset=["text"])
+        .copy()
+        .reset_index(drop=True)
+    )
+
+    sentiment_df = (
+        sentiment_df
+        .groupby(["party", "year"], as_index=False)["text"]
+        .agg(lambda values: " ".join(str(v) for v in values))
+    )
+
+    return sentiment_df
+
+
 def calculate_hellinger_distance(p, q):
 
 	p = np.asarray(p, dtype=np.float64)

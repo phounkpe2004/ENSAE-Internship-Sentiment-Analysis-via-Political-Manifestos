@@ -81,6 +81,12 @@ def build_model(
     country_to_idx: dict,
 ) -> pm.Model:
 
+    if num_countries <= 0 or num_sessions <= 0 or num_resolutions <= 0:
+        raise ValueError(
+            "The model cannot be built because the prepared vote matrix is empty or degenerate: "
+            f"countries={num_countries}, sessions={num_sessions}, resolutions={num_resolutions}."
+        )
+
     theta0_mu, theta0_sigma = build_theta0_priors(country_to_idx)
 
     with pm.Model() as model:
@@ -94,20 +100,22 @@ def build_model(
             shape=num_countries,
         )
 
-        theta_innov = pm.Normal(
-            "theta_innov",
-            mu=0,
-            sigma=sigma_theta,
-            shape=(num_countries, num_sessions - 1),
-        )
-
-        theta = pm.Deterministic(
-            "theta",
-            pt.concatenate(
-                [theta_0[:, None], theta_0[:, None] + pt.cumsum(theta_innov, axis=1)],
-                axis=1,
-            ),
-        )
+        if num_sessions == 1:
+            theta = pm.Deterministic("theta", theta_0[:, None])
+        else:
+            theta_innov = pm.Normal(
+                "theta_innov",
+                mu=0,
+                sigma=sigma_theta,
+                shape=(num_countries, num_sessions - 1),
+            )
+            theta = pm.Deterministic(
+                "theta",
+                pt.concatenate(
+                    [theta_0[:, None], theta_0[:, None] + pt.cumsum(theta_innov, axis=1)],
+                    axis=1,
+                ),
+            )
 
         beta = pm.Normal("beta", sigma=1, shape=num_resolutions)
 

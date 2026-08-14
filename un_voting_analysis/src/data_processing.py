@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
-from src.config import MCMCConfig
+
+from dataclasses import dataclass
+from pathlib import Path
 
 # Codes de vote bruts -> à filtrer avant modélisation
 VALID_VOTE_CODES = {1, 2, 3}  # Yes, Abstain, No -- on exclut 8 (absent) et 9 (non-membre)
@@ -246,17 +248,60 @@ HARDCODED_COUNTRY_MAP = {
     "ZIMBABWE": "ZWE"
 }
 
+@dataclass
+class MCMCConfig:
+
+    project_root: Path
+
+    raw_data_dir: Path = None
+    processed_data_dir: Path = None
+    random_seed: int = 42
+
+    data_code: str = "Important"
+
+    def __post_init__(self):
+        self.project_root = Path(self.project_root)
+
+        if self.raw_data_dir is None:
+            self.raw_data_dir = self.project_root / "data" / "raw"
+        else:
+            self.raw_data_dir = Path(self.raw_data_dir)  # tolère une string en entrée
+
+        if self.processed_data_dir is None:
+            self.processed_data_dir = self.project_root / "data" / "processed"
+        else:
+            self.processed_data_dir = Path(self.processed_data_dir)
+
+        self.processed_data_dir.mkdir(parents=True, exist_ok=True)
+
+        assert self.raw_data_dir.exists(), (
+            f"Dossier de données brutes introuvable : {self.raw_data_dir}"
+        )
 
 def load_raw_votes(
-    cfg: MCMCConfig, verbose: bool = False, vote_type: str = "Important"
+    cfg: MCMCConfig, verbose: bool = False, vote_type: str = "Important", vote_dataset: str = "voeten"
 ) -> pd.DataFrame:
 
-    votes_path = cfg.raw_data_dir / "un_votes.csv"
-    matcher_path = cfg.raw_data_dir / "country_codes.csv"
+    if vote_dataset == "voeten":
+        votes_path = cfg.raw_data_dir / "voeten_un_votes.csv"
+        matcher_path = cfg.raw_data_dir / "country_codes.csv"
+    elif vote_dataset == "updated":
+        votes_path = cfg.raw_data_dir / "updated_un_votes.csv"
+        matcher_path = cfg.raw_data_dir / "country_codes.csv"
 
     raw = pd.read_csv(votes_path, index_col=0)
     matcher = pd.read_csv(matcher_path)
     filtered = raw[raw["vote"].isin(VALID_VOTE_CODES)].copy()
+
+    if vote_dataset =="voeten":
+            # --- Country ISO Code Mapping ---
+        name_to_iso = dict(
+            zip(matcher["StateNme"].str.upper(), matcher["StateAbb"])
+        )
+        names_iso = {**name_to_iso, **HARDCODED_COUNTRY_MAP}
+
+        filtered["country_code"] = filtered["Country"].map(names_iso)
+        filtered["country_code"] = filtered["country_code"].fillna(filtered["Country"])
   
     if vote_type == "All":
         pass  # Keep all valid votes
@@ -321,25 +366,55 @@ def load_raw_votes(
         print("\nNombre de votes pour les résolutions :")
         print(filtered.groupby("rcid")["vote"].count().describe())
 
-    # --- Country ISO Code Mapping ---
-    name_to_iso = dict(
-        zip(matcher["StateNme"].str.upper(), matcher["StateAbb"])
-    )
-    names_iso = {**name_to_iso, **HARDCODED_COUNTRY_MAP}
-
-    filtered["country_code"] = filtered["Country"].map(names_iso)
-    filtered["country_code"] = filtered["country_code"].fillna(filtered["Country"])
 
     return filtered
 
 
 def transform_votes(votes: pd.DataFrame) -> pd.DataFrame:
-
+    """Return a clean vote matrix with a normalized country_code column."""
     votes = votes.copy()
 
-    matrix = votes[["country_code", "rcid", "session", "vote", "year"]]
+    if votes.empty:
+        raise ValueError("The uploaded UN votes table is empty.")
 
-    return matrix
+    country_column = None
+    for candidate in ["country_code", "Country", "country", "country_name"]:
+        if candidate in votes.columns:
+            country_column = candidate
+            break
+
+    if country_column is None:
+        raise ValueError(
+            "The uploaded UN votes file must contain a country column such as 'country_code' or 'Country'."
+        )
+
+    if country_column != "country_code":
+        votes["country_code"] = votes[country_column].astype(str).str.strip()
+        votes["country_code"] = votes["country_code"].str.upper()
+
+        name_map = {str(k).upper(): str(v) for k, v in HARDCODED_COUNTRY_MAP.items()}
+        votes["country_code"] = votes["country_code"].map(name_map).fillna(votes["country_code"])
+
+    for col in ["rcid", "session", "vote", "year"]:
+        if col not in votes.columns:
+            raise ValueError(f"Missing required column '{col}' in the UN votes data.")
+
+    votes["country_code"] = votes["country_code"].astype(str).str.strip()
+    votes["country_code"] = votes["country_code"].replace({"nan": pd.NA, "None": pd.NA})
+    votes["rcid"] = pd.to_numeric(votes["rcid"], errors="coerce")
+    votes["session"] = pd.to_numeric(votes["session"], errors="coerce")
+    votes["vote"] = pd.to_numeric(votes["vote"], errors="coerce")
+    votes["year"] = pd.to_numeric(votes["year"], errors="coerce")
+
+    votes = votes.dropna(subset=["country_code", "rcid", "session", "vote", "year"]).copy()
+    votes = votes[votes["vote"].isin(VALID_VOTE_CODES)].copy()
+
+    if votes.empty:
+        raise ValueError(
+            "No valid rows remain after filtering the UN votes table. Check the vote codes and the country column."
+        )
+
+    return votes[["country_code", "rcid", "session", "vote", "year"]].reset_index(drop=True)
 
 
 def encoder_dictionnaries(vote_dataframe):

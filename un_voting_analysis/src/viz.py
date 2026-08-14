@@ -2,66 +2,69 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-def plot_country_trajectories(theta_summary: pd.DataFrame, countries: list[str], conf_intervals: bool = False) -> None:
-    
-    plt.style.use(
-    "seaborn-v0_8-whitegrid"
-    if "seaborn-v0_8-whitegrid" in plt.style.available
-    else "default")
-
-    plt.figure(figsize=(15, 10))
-
-    for country in countries:
-        subset = theta_summary[theta_summary["country"] == country].sort_values("year")
-        plt.plot(subset["year"], subset["mean_theta"], label=country, marker='o')
-        if conf_intervals:
-            plt.fill_between(
-                subset["year"], subset["q025"], subset["q975"], alpha=0.15
-            )
-
-    plt.axhline(0, linestyle="--", linewidth=1, color="gray")
-    plt.xlabel("Année")
-    plt.ylabel(r"$\theta_{it}$")
-    plt.title("Évolution des points idéaux")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.show()
-
-
-def plot_distance_to_USA(theta_summary: pd.DataFrame, countries: list[str]) -> pd.DataFrame:
+def plot_country_trajectories(theta_summary: pd.DataFrame, countries: list[str], conf_intervals: bool = False):
     plt.style.use(
         "seaborn-v0_8-whitegrid"
         if "seaborn-v0_8-whitegrid" in plt.style.available
         else "default"
     )
-    plt.figure(figsize=(15, 10))
 
-    # 1. Isolate USA and map year -> mean_theta
-    usa = theta_summary[theta_summary["country"] == "USA"].set_index("year")["mean_theta"]
+    fig, ax = plt.subplots(figsize=(15, 10))
 
-    # Container to store calculated distances for return
+    for country in countries:
+        subset = theta_summary[theta_summary["country"] == country].sort_values("year")
+        ax.plot(subset["year"], subset["mean_theta"], label=country, marker='o')
+        if conf_intervals:
+            ax.fill_between(subset["year"], subset["q025"], subset["q975"], alpha=0.15)
+
+    ax.axhline(0, linestyle="--", linewidth=1, color="gray")
+    ax.set_xlabel("Année")
+    ax.set_ylabel(r"$\theta_{it}$")
+    ax.set_title("Évolution des points idéaux")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    
+    return fig
+
+
+
+def plot_distance_to_USA(theta_summary: pd.DataFrame, countries: list[str], return_figure: bool = False):
+    plt.style.use(
+        "seaborn-v0_8-whitegrid"
+        if "seaborn-v0_8-whitegrid" in plt.style.available
+        else "default"
+    )
+    fig, ax = plt.subplots(figsize=(15, 10))
+
+    usa = (
+        theta_summary[theta_summary["country"] == "USA"]
+        .groupby("year")["mean_theta"]
+        .mean()
+    )
+
     results = []
 
     for country in countries:
         subset = theta_summary[theta_summary["country"] == country].sort_values("year").copy()
-        
-        # 2. Subtract USA mean_theta by matching on 'year' automatically
         subset["distance_to_usa"] = subset["mean_theta"] - subset["year"].map(usa)
-        
-        # 3. Plot using aligned series
-        plt.plot(subset["year"], subset["distance_to_usa"], label=country,marker='o')
+        ax.plot(subset["year"], subset["distance_to_usa"], label=country, marker='o')
         results.append(subset)
 
-    plt.axhline(0, linestyle="--", linewidth=1, color="gray")
-    plt.xlabel("Année")
-    plt.ylabel(r"$\Delta \theta_{it}$")
-    plt.title("Distance idéologique par rapport aux USA")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.show()
+    ax.axhline(0, linestyle="--", linewidth=1, color="gray")
+    ax.set_xlabel("Année")
+    ax.set_ylabel(r"$\Delta \theta_{it}$")
+    ax.set_title("Distance idéologique par rapport aux USA")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
 
-    # Combine all distance results into a single clean DataFrame
-    return pd.concat(results, ignore_index=True)[["country","year","distance_to_usa"]] if results else pd.DataFrame()
+    df = pd.concat(results, ignore_index=True)[["country", "year", "distance_to_usa"]] if results else pd.DataFrame()
+
+    if return_figure:
+        return fig, df
+    return df
 
 def plot_distance_sentiment(data, target_country = "AUS"):
     

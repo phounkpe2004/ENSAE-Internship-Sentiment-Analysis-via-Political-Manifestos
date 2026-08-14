@@ -4,10 +4,7 @@ import spacy
 import matplotlib.pyplot as plt
 
 
-NLP = spacy.load(
-    "en_core_web_sm",
-    disable=["tagger", "attribute_ruler", "lemmatizer", "ner"],
-)
+NLP = spacy.load("en_core_web_sm")
 
 def structure_manifestos(manifesto_dir, party_prefix_mapper, covered_years):
 

@@ -1,5 +1,7 @@
 import requests
+import streamlit as st
 
+@st.cache_data
 def generate_wikidata_country_dictionary():
     # URL de l'API SPARQL de Wikidata
     url = "https://query.wikidata.org/sparql"
