@@ -30,7 +30,7 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-### Step 2: Launch the app
+### Step 2: Launch the app. You should launch this in a bash terminal.
 
 ```bash
 streamlit run app.py
